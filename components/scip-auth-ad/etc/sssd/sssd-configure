@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+
+# This file is provided by scip-release package
+source /etc/scip-release
+
+SCIP_AUTH_CONFIG="/etc/scip-auth-ad/auth-domain"
+# Authentication domain name, for example scip.quantori.lo
+SCIP_AUTH_DOMAIN=
+SCIP_DOMAIN="${SCIP_ENVIRONMENT}.us-east-1.scip.lo"
+SCIP_SSSD_KEYTAB_FILE="${SCIP_SSSD_KEYTAB_FILE:-/etc/sssd/scip.keytab}"
+
+# Configure domain suffix for SciP landing zone;
+function enable_scip_domain(){
+  host -t ns "${SCIP_DOMAIN}" > /dev/null && {
+    grep -q "search .* ${SCIP_DOMAIN}" /etc/resolv.conf || {
+      echo "append domain-name \" ${SCIP_DOMAIN}\";" >> /etc/dhcp/dhclient.conf
+      systemctl restart network
+    }
+  }
+}
+
+# Configure domain suffix for SciP landing zone;
+function discover_auth_service(){
+  local service=$1
+  AD_DNSSRV=$(host -t SRV _auth-dns._tcp.${SCIP_DOMAIN} | sed -n 's/.*SRV record .* \(.*\).$/\1/p') #'
+  test "x${service}" == "xdns" && echo ${AD_DNSSRV} || {
+    test -z ${SCIP_AUTH_DOMAIN} || {
+      host -t SRV "_$1._tcp.${SCIP_AUTH_DOMAIN}" ${AD_DNSSRV} | sed -n 's/.*SRV record .* \(.*\).$/\1/p' #'
+    }
+  }
+}
+
+# Download settings of the Active Directory domain for user authentication
+function compose_auth_config(){
+local auth_dns=$(discover_auth_service dns)
+local auth_krb5=$(discover_auth_service kerberos)
+local auth_ldap=$(discover_auth_service ldap)
+local newline=$'\n'
+cat <<-EOF > ${SCIP_AUTH_CONFIG}
+	# Active Directory domain name to use for authentication and authorization
+	SCIP_AUTH_DOMAIN="${SCIP_AUTH_DOMAIN}"
+
+	# IP addresses of the Active Directory DNS servers
+	SCIP_AUTH_DNS="${auth_dns//$newline/ }"
+
+	# Kerberos servers to use for authentication
+	SCIP_AUTH_KERBEROS="${auth_krb5//$newline/ }"
+
+	# LDAP server names as Kerberos principals
+	SCIP_AUTH_LDAP="${auth_ldap//$newline/ }"
+EOF
+}
+
+# Process templates to prepare valid SSSD configs
+function make_sssd_configs(){
+  test -f "${SCIP_AUTH_CONFIG}" || {
+    compose_auth_config
+  }
+
+  set -a
+  . "${SCIP_AUTH_CONFIG}"
+  set +a
+
+  for template in /etc/scip-auth-ad/sssd/*.conf ; do
+    echo "An attempt to process sssd template ${template}"
+    test -f "${template}" && {
+      gomplate \
+        -f "${template}" \
+        -o /etc/sssd/conf.d/$(basename $template)
+    }
+  done
+  chmod 600 /etc/sssd/conf.d/*
+}
+
+
+# Process templates to prepare valid SSSD configs
+function make_kerberos_configs(){
+  test -f "${SCIP_AUTH_CONFIG}" || {
+    compose_auth_config
+  }
+
+  set -a
+  . "${SCIP_AUTH_CONFIG}"
+  set +a
+
+  for template in /etc/scip-auth-ad/krb5.conf.d/* ; do
+    echo "An attempt to process kerberos template ${template}"
+    test -f "${template}" && {
+      gomplate \
+        -f "${template}" \
+        -o /etc/krb5.conf.d/$(basename $template)
+    }
+  done
+  chmod 644 /etc/krb5.conf.d/*
+}
+
+
+# Pull Kerberos username/password for SSSD daemon from AWS Secrets Manager
+# and get kerberos ticket using the pulled credentials
+function make_sssd_keytab(){
+  local keytab=${SCIP_SSSD_KEYTAB_FILE}
+  printf '%b ' \
+    'addent -password' \
+    '-p {{ (ds "aduser" | json).username }}@{{ .Env.SCIP_AUTH_DOMAIN }}' \
+    '-k 6 -e RC4-HMAC' \
+    '\n{{ (ds "aduser" | json).password }}\n' \
+    "wkt ${keytab}" |
+  gomplate -d aduser=aws+sm:///scip/${SCIP_OWNER}/${SCIP_ENVIRONMENT}/sssd/ad-credentials |
+  ktutil > /dev/null && chmod 600 ${keytab}
+}
+
+# Make sure that remote services are resolvable
+function update_hosts(){
+  test -f "${SCIP_AUTH_CONFIG}" || {
+    compose_auth_config
+  }
+
+  source "${SCIP_AUTH_CONFIG}"
+  for host in $SCIP_AUTH_KERBEROS $SCIP_AUTH_LDAP ; do
+    local ip=$(host -t A "${host}" ${SCIP_AUTH_DNS} | sed -n 's/.*has address \(\S\+\)$/\1/p') #'
+    grep -q "$ip.*$host" /etc/hosts || {
+      grep -q "$host" /etc/hosts && {
+        echo "Hey"
+      } || {
+        echo "$ip	$host" >> /etc/hosts
+      }
+    }
+  done
+}
+
+
+function update_ssh(){
+  # TODO: use variables to mark start/end block
+  local sline="Start SciP block" eline="End SciP block"
+  for file in /etc/ssh/sshd_config /etc/chef/cookbooks/openssh/templates/sshd_config.erb ; do
+    test -f "$file" && {
+      sed -i.orig -e '$r /etc/scip-auth-ad/ssh/scip-kerberos.conf' -e  '/# Start SciP block/,/# End SciP block/d' "$file"
+    }
+  done
+  systemctl is-active --quiet sshd.service && systemctl restart --quiet sshd.service || :
+}
+
+SCIP_AUTH_DOMAIN=$(host -t txt "auth-domain-name.${SCIP_DOMAIN}" | sed -n 's/.*descriptive text "\(.*\)"/\1/p')
+
+test -n "${SCIP_AUTH_DOMAIN}" && {
+  compose_auth_config
+} || {
+  >&2 echo "ERROR: Authentication domain record 'auth-domain-name.${SCIP_DOMAIN}' is not defined or has an empty value"
+  exit 101
+}
+
+export SCIP_AUTH_DOMAIN SCIP_AUTH_DNS SCIP_SSSD_KEYTAB_FILE

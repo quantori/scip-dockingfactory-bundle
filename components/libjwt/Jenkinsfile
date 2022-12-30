@@ -1,0 +1,61 @@
+
+def buildInDocker(String name, String platform, String release){
+    script {
+        def prefix = sh(script: "echo RPM/${platform}/${release}/\$(uname -m)", returnStdout: true).trim()
+        def workspace = '/build'
+        def image = docker.build("build/${prefix}:latest".toLowerCase(), "--build-arg workspace=${workspace} -f components/${name}/Dockerfile.${platform}${release} ./")
+
+        image.inside {
+          sh("cp ${workspace}/libjwt/rpmbuild/RPMS/*/libjwt-*.rpm ./")
+        }
+
+        def startChar = name[0].toLowerCase() 
+        sh("aws s3 mv --recursive --exclude '*' --include 'libjwt-*.rpm' ./ s3://${SCIP_DEPLOYMENT_BUCKET}/${prefix}/Packages/${startChar}")
+    }
+}
+
+
+pipeline {
+
+    agent none
+
+    environment {
+        SCIP_COMPONENT="libjwt"
+    }
+
+    stages {
+        stage("Build binaries in parallel") {
+            parallel {
+                stage('ARM64: Amazon Linux 2') {
+                    agent { label 'arm' }
+
+                    steps {
+                        buildInDocker(env.SCIP_COMPONENT, 'amazon', '2')
+                        cleanWs()
+                    }
+                }
+                stage('x86_64: Amazon Linux 2') {
+                    agent { label 'x86_64' }
+                    steps {
+                        buildInDocker(env.SCIP_COMPONENT, 'amazon', '2')
+                        cleanWs()
+                    }
+                }
+                stage('x86_64: CentOS 7') {
+                    agent { label 'x86_64' }
+                    steps {
+                        buildInDocker(env.SCIP_COMPONENT, 'centos', '7')
+                        cleanWs()
+                    }
+                }
+            }
+        }
+
+    }
+
+    post {
+        success {
+             build job: 'rpm-metadata-update'
+        }
+    }
+}

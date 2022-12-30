@@ -1,0 +1,106 @@
+unchanged:
+--- ../untar/openbabel-3.1.1/src/oberror.cpp	2020-05-08 15:41:00.000000000 +0000
++++ src/oberror.cpp	2021-09-30 15:23:31.123525905 +0000
+@@ -22,9 +22,10 @@
+ #include <iostream>
+ #include <string>
+ #include <algorithm>
+-
++#include <mutex>
+ #include <openbabel/oberror.h>
+ 
++std::mutex door;
+ using namespace std;
+ 
+ namespace OpenBabel
+@@ -162,6 +163,8 @@
+ 
+   void OBMessageHandler::ThrowError(OBError err, errorQualifier qualifier)
+   {
++    //return;
++    door.lock();
+     if (!_logging)
+       return;
+ 
+@@ -176,6 +179,8 @@
+     _messageCount[err.GetLevel()]++;
+     if (_maxEntries != 0 && _messageList.size() > _maxEntries)
+       _messageList.pop_front();
++
++    door.unlock();
+   }
+ 
+   void OBMessageHandler::ThrowError(const std::string &method,
+unchanged:
+--- src/formats/pdbqtformat.cpp	2020-05-08 15:38:02.000000000 +0000
++++ ../../../openbabel-openbabel-3-1-1/src/formats/pdbqtformat.cpp	2021-12-11 21:39:08.009249064 +0000
+@@ -36,12 +36,14 @@
+ #include <vector>
+ #include <map>
+ #include <set>
++#include <mutex>	
+ 
+ #include <sstream>
+ 
+ using namespace std;
+ namespace OpenBabel
+ {
++  std::mutex resdat_mutex;
+   class branch
+   {
+     public:
+@@ -292,7 +294,17 @@
+       return(false);
+     }
+ 
+-    resdat.AssignBonds(mol);
++    resdat_mutex.lock();
++    try
++    {
++        resdat.AssignBonds(mol);
++    }
++    catch (...)
++    {
++        resdat_mutex.unlock();
++        throw;
++    }
++    resdat_mutex.unlock();
+     /*assign hetatm bonds based on distance*/
+ 
+     mol.EndModify();
+only in patch2:
+unchanged:
+--- ../openbabel311/src/atom.cpp	2021-12-16 17:19:36.195321041 +0000
++++ ./src/atom.cpp	2021-12-15 18:57:04.457094493 +0000
+@@ -35,6 +35,7 @@
+ #include <openbabel/chains.h>
+ 
+ #include <openbabel/math/matrix3x3.h>
++#include <mutex>
+ 
+ #if !HAVE_STRNCASECMP
+ extern "C" int strncasecmp(const char *s1, const char *s2, size_t n);
+@@ -46,6 +47,7 @@
+ namespace OpenBabel
+ {
+   OB_EXTERN OBChainsParser chainsparser;
++  std::mutex door_mutex;
+   /** \class OBAtom atom.h <openbabel/atom.h>
+       \brief Atom class
+ 
+@@ -445,10 +447,13 @@
+ 
+   OBResidue *OBAtom::GetResidue()
+   {
++    
++    door_mutex.lock();
+     OBMol *mol = this->GetParent();
+     if (!mol->HasChainsPerceived())
+       chainsparser.PerceiveChains(*mol);
+-
++    
++    door_mutex.unlock();
+     return _residue;
+   }
+ 
+\ No newline at end of file

@@ -1,0 +1,57 @@
+pipeline {
+
+    agent none
+
+    stages {
+
+        stage("Python: build") {
+
+            matrix {
+
+                agent {
+                    label "${PLATFORM} && ${ARCH}"
+                }
+
+                axes {
+                    axis {
+                        name 'ARCH'
+                        values 'arm64', 'x86_64'
+                    }
+                    axis {
+                        name 'PLATFORM'
+                        values 'centos7', 'amazon2'
+                    }
+                }
+
+                excludes {
+                    exclude {
+                        axis {
+                            name 'PLATFORM'
+                            values 'centos7'
+                        }
+                        axis {
+                            name 'ARCH'
+                            values 'arm64'
+                        }
+                    }
+                }
+
+                stages {
+
+                    stage('Build RPM') {
+                        steps {
+                            sh "make -f components/python/Makefile python.rpm BUILDSPACE='${pwd(tmp: true)}'"
+                        }
+                    }
+
+                    stage('Move RPM into S3') {
+                        steps {
+                            sh "find '${pwd(tmp: true)}/RPMS/' -type f -iname '*.rpm' -exec aws s3 cp {} s3://${SCIP_DEPLOYMENT_BUCKET}/RPM/ \\;"
+                            cleanWs()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

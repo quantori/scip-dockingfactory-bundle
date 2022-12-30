@@ -1,0 +1,397 @@
+{% extends "page.html" %}
+{% if announcement_home %}
+  {% set announcement = announcement_home %}
+{% endif %}
+
+{% block main %}
+<div class="container">
+
+  <h2>
+  Servers
+  </h2>
+
+  {% if allow_named_servers %}
+  <p>
+  In addition to your default server,
+  you may have additional {% if named_server_limit_per_user > 0 %}{{ named_server_limit_per_user }} {% endif %}server(s) with names.
+  This allows you to have more than one server running at the same time.
+  </p>
+
+  {% set named_spawners = user.all_spawners(include_default=True)|list %}
+      <div class="row home-server-row add-server-row">
+        <div class="col-md-4 col-sm-4">
+          <input class="form-control new-server-name" placeholder="Name your server">
+            <div id="server-name-error-msg" class="alert alert-danger hidden" role="alert">
+                Server name must contain only alphanumeric characters "[0-9A-Za-z_-]"
+            </div>
+        </div>
+      <div class="col-md-4 col-sm-4">
+          <a role="button" class="new-server-btn add-server btn btn-md btn-primary">
+            Add New Server
+          </a>
+      </div>
+      </div>
+
+      <br>
+  {% endif %}
+  <table class="server-table table table-striped">
+    <thead>
+      <tr>
+        <th>Server name</th>
+        <th>Active</th>
+        <th>Instance Type</th>
+        <th>Price per Hour</th>
+        <th>Total cost</th>
+        <th>Bucket</th>
+        <th>URL</th>
+        <th>Last activity</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+
+      {% for spawner in named_spawners %}
+      {% set i = spawner.instance_type_info if spawner.instance_type_info else spawner.orm_spawner.state.instance_type_info %}
+      <tr class="home-server-row"
+          data-server-name="{{ spawner.name }}"
+          {% if i and i.instance_type %}
+            data-instance-type="{{ i.instance_type }}"
+          {% endif %}
+          data-nb_type="{{ spawner.nb_type|default(spawner.orm_spawner.state.nb_type) }}"
+          data-bucket="{{ spawner.bucket|default(spawner.orm_spawner.state.bucket) }}"
+          data-runtimehour="{{ spawner.runtimehour|default(spawner.orm_spawner.state.runtimehour) }}"
+          data-runtimemin="{{ spawner.runtimemin|default(spawner.orm_spawner.state.runtimemin) }}"
+          data-runtimesec="{{ spawner.runtimesec|default(spawner.orm_spawner.state.runtimesec) }}"
+      >
+        {# name #}
+        <td>{{ spawner.name|default("default", true) }}</td>
+        {# active #}
+        <td><span class="active-info">{{ 'Yes' if spawner.active else 'No' }}</span></td>
+        {# instance type #}
+        <td>
+            {% if i %}{{ i.vcpu }}vCPU - {{ i.memory }} RAM{{ i.gpu }} ({{ i.instance_type }}){% endif %}
+        </td>
+        {# hourly rate #}
+        <td>
+            {% if i %}
+                {% if i.price_per_hour %}${{ i.price_per_hour|float }}{% endif %}
+            {% endif %}
+        </td>
+        {# total cost #}
+        <td>
+            {% if i and spawner.active %}
+                ${{'%0.2f' | format(spawner.get_cost()) }}
+            {% endif %}
+        </td>
+        {# bucket #}
+        <td>{% if spawner.bucket %}
+            {{ spawner.bucket }}
+        {% else %}
+            {{ spawner.orm_spawner.state.bucket }}
+        {% endif %}</td>
+        {# url #}
+        <td>
+          <a class="server-link {% if not spawner.active %}hidden{% endif %}" href="{{ user.server_url(spawner.name) }}">
+            {{ user.server_url(spawner.name) }}
+          </a>
+        </td>
+        {# activity #}
+        <td class='time-col'>
+          {% if spawner.last_activity %}
+          {{ spawner.last_activity.isoformat() + 'Z' }}
+          {% else %}
+          Never
+          {% endif %}
+        </td>
+        {# actions #}
+        <td>
+            <a role="button" class="configure-server btn btn-xs btn-warning{% if spawner.active %} hidden{% endif %}"
+               id="configure-{{ spawner.name }}">configure</a>
+            <a role="button" class="stop-server btn btn-xs btn-danger{% if not spawner.active %} hidden{% endif %}"
+               id="stop-{{ spawner.name }}">stop</a>
+            <a role="button" class="start-server btn btn-xs btn-primary
+                {# do not show start button if server is not configured #}
+                {% if spawner.active or not i or not i.instance_type %} hidden{% endif %}"
+               id="start-{{ spawner.name }}">start</a>
+            {% if spawner != default_server %}
+              <a role="button" class="delete-server btn btn-xs btn-danger{% if spawner.active %} hidden{% endif %}"
+                 id="delete-{{ spawner.name }}">delete</a>
+            {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+
+    <h2>Jobs</h2>
+    <div id="jobauth" class="alert alert-warning" style="display: none; width:28%;">
+            To see the slurm jobs you need to <button class="btn btn-warning btn-sm" type="button" onclick="location.href='../services/slurm/'">Authorize</button>
+    </div>
+    <table class="jobs-table table table-striped">
+        <thead>
+          <tr>
+            <th>JobID</th>
+            <th>JobName</th>
+            <th>InstanceType</th>
+            <th>Time</th>
+            <th>Cost</th>
+            <th>State</th>
+            <th>StdOut</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody class="jobs-list">
+            <tr>
+                <td colspan="10">Loading...</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock main %}
+
+{% block script %}
+{{ super() }}
+<script type="text/javascript">
+    require(["jquery", "moment", "jhapi"], function ($, moment, JHAPI) {
+      "use strict";
+
+      var base_url = window.jhdata.base_url;
+      var user = window.jhdata.user;
+      var api = new JHAPI(base_url);
+
+      // Named servers buttons
+
+      function getRow(element, className) {
+          if(!className){
+              className = "home-server-row"
+          }
+        while (!element.hasClass(className)) {
+          element = element.parent();
+        }
+        return element;
+      }
+
+      function disableRow(row) {
+        row.find(".btn").attr("disabled", true).off("click");
+      }
+
+      function enableRow(row, running) {
+        // enable buttons on a server row
+        // once the server is running or not
+        row.find(".btn").attr("disabled", false);
+        row.find(".stop-server").click(stopServer);
+        row.find(".delete-server").click(deleteServer);
+        row.find(".start-server").click(startServer);
+        row.find(".configure-server").click(configureServer);
+
+        if (running) {
+          row.find(".start-server").addClass("hidden");
+          row.find(".delete-server").addClass("hidden");
+          row.find(".stop-server").removeClass("hidden");
+          row.find(".server-link").removeClass("hidden");
+          row.find(".active-info").text("Yes");
+        } else {
+          row.find(".start-server").removeClass("hidden");
+          row.find(".configure-server").removeClass("hidden");
+          row.find(".delete-server").removeClass("hidden");
+          row.find(".stop-server").addClass("hidden");
+          row.find(".server-link").addClass("hidden");
+          row.find(".active-info").text("No");
+        }
+      }
+
+      function submitForm(url, data) {
+        var form = document.createElement('form');
+        document.body.appendChild(form);
+        form.method = 'post';
+        form.action = url;
+        form.role = 'form';
+        for (var name in data) {
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = data[name];
+            form.appendChild(input);
+        }
+        form.submit();
+      }
+
+      function startServer() {
+        var row = getRow($(this));
+        disableRow(row);
+        var serverName = row.data("server-name")
+        if (serverName === "") {
+          var url = "./spawn/" + user;
+        } else {
+          var url = "./spawn/" + user + "/" + serverName;
+        }
+        var data = {
+            'type': row.data('instance-type'),
+            'bucket': row.data('bucket'),
+            'nb_type': row.data('nb_type'),
+            'runtimehour': row.data('runtimehour'),
+            'runtimemin': row.data('runtimemin'),
+            'runtimesec': row.data('runtimesec')
+        }
+        if(!data['type'] || !data['nb_type']) {
+            return configureServer.call(this)
+          }
+        submitForm(url, data)
+      }
+
+      function configureServer() {
+        var row = getRow($(this));
+        var serverName = row.data("server-name") || row.find(".new-server-name").val();
+        if (serverName === '' || serverName === undefined || serverName === null) {
+          // ../spawn/user/ causes a 404, ../spawn/user redirects correctly to the default server
+          window.location.href = "./spawn/" + user;
+        } else {
+          window.location.href = "./spawn/" + user + "/" + serverName;
+        }
+      }
+
+      function stopServer() {
+        var row = getRow($(this));
+        var serverName = row.data("server-name");
+
+        // before request
+        disableRow(row);
+
+        // request
+        $.post( "stopserv", {"for_user": user, "server_name": serverName});
+        if(serverName === ""){
+            api.stop_server(user, {
+                success: function () {
+                    enableRow(row, false);
+                  }
+            })
+        } else {
+            api.stop_named_server(user, serverName, {
+                success: function () {
+                    enableRow(row, false);
+                },
+        });
+        }
+        loadJobs.call(this);
+      }
+
+      function deleteServer() {
+        var row = getRow($(this));
+        var serverName = row.data("server-name");
+
+        // before request
+        disableRow(row);
+
+        // request
+        api.delete_named_server(user, serverName, {
+          success: function () {
+            row.remove();
+          },
+        });
+      }
+      function validateServerName(serverName){
+          const regex = new RegExp("^[a-zA-Z0-9_-]+$");
+          return regex.test(serverName);
+      }
+
+      $(".new-server-btn").click(function (e) {
+          var row = getRow($(this));
+          var serverName = row.find(".new-server-name").val();
+          var isValid = validateServerName(serverName)
+          if (isValid){
+            $("#server-name-error-msg").addClass("hidden");
+            configureServer.call(this)
+          } else {
+              $("#server-name-error-msg").removeClass("hidden");
+          }
+      });
+      $(".new-server-name").on("keyup", function (e) {
+          var serverName = $(this).val();
+          if (!serverName) {
+              $("#server-name-error-msg").addClass("hidden");
+              return false
+          }
+          var isValid = validateServerName(serverName)
+          if (isValid) {
+              $("#server-name-error-msg").addClass("hidden");
+              if (e.which === 13) {
+                  configureServer.call(this)
+              }
+          } else {
+              $("#server-name-error-msg").removeClass("hidden");
+          }
+
+      });
+
+      $(".stop-server").click(stopServer);
+      $(".delete-server").click(deleteServer);
+      $(".start-server").click(startServer);
+      $(".configure-server").click(configureServer);
+
+      // render timestamps
+      $(".time-col").map(function (i, el) {
+        // convert ISO datestamps to nice momentjs ones
+        el = $(el);
+        var m = moment(new Date(el.text().trim()));
+        el.text(m.isValid() ? m.fromNow() : "Never");
+      });
+
+      {# check oauth status #}
+      function authStatus() {
+        fetch('/services/slurm/')
+        .then(response =>  {
+        if (response.redirected == true) {
+          $("#jobauth").show()
+            }
+        })
+      }
+      {# load jobs #}
+      function loadJobs() {
+        $.get('/services/slurm/api/jobs/', function (response) {
+              const jobs = response.jobs;
+              const jobsList = $('.jobs-list');
+              jobsList.html('');
+              $.each(jobs, function (i, job) {
+                  const row = $('<tr class="job-row">')
+                  row.append($('<td>').text(job.job_id))
+                  row.append($('<td>').text(job.name))
+                  row.append($('<td>').text(job.instance_type))
+                  row.append($('<td>').text(job.total_time))
+                  row.append($('<td>').text(`$${job.cost}`))
+                  row.append($('<td>').text(job.job_state))
+                  row.append($(`<td><a href="/services/slurm/api/jobs/${job.job_id}/log/">${job.standard_output}</a></td>`))
+                  if(job.job_state === 'RUNNING') {
+                    row.append($(`<td><a role="button" class="stop-job btn btn-xs btn-danger" data-job=${job.job_id}>Stop</a></td>`))
+                  }
+                  jobsList.append(row)
+              })
+              $('.stop-job').on('click', function (e){
+                  const jobId = $(this).data('job');
+                  stopJob.call(this, jobId)
+              })
+          })
+      }
+      function stopJob(jobId) {
+          const row = getRow($(this), 'job-row')
+          $.ajax({
+              url: `/services/slurm/api/jobs/${jobId}/`,
+              type: 'DELETE',
+              success: function (result){
+                  row.remove()
+                  loadJobs.call(this)
+              },
+              error: function (result){
+                  alert(result.statusText)
+                  loadJobs.call(this)
+              }
+
+          })
+      }
+      $(document).ready(function(){
+          authStatus()
+          loadJobs.call(this);
+      });
+    });
+</script>
+{% endblock %}

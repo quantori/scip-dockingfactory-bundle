@@ -1,0 +1,68 @@
+--- dask/lib/python3.7/site-packages/dask_gateway_server/backends/jobqueue/slurm.py	2021-04-01 17:27:21.052549928 +0000
++++ dask/lib/python3.7/site-packages/dask_gateway_server/backends/jobqueue/slurm.py.new	2021-04-01 17:27:14.660579095 +0000
+@@ -26,6 +26,10 @@
+     """Dask cluster configuration options when running on SLURM"""
+ 
+     partition = Unicode("", help="The partition to submit jobs to.", config=True)
++    scheduler_partition = Unicode("", help="The partition to submit scheduler jobs to.", config=True)
++
++    constraint = Unicode("", help="Constrating to use with workers", config=True) 
++    scheduler_constraint = Unicode("", help="Constrating to use with workers", config=True) 
+ 
+     qos = Unicode("", help="QOS string associated with each job.", config=True)
+ 
+@@ -57,14 +61,16 @@
+     def get_submit_cmd_env_stdin(self, cluster, worker=None):
+         cmd = [self.submit_command, "--parsable"]
+         cmd.append("--job-name=dask-gateway")
+-        if cluster.config.partition:
+-            cmd.append("--partition=" + cluster.config.partition)
+         if cluster.config.account:
+             cmd.account("--account=" + cluster.config.account)
+         if cluster.config.qos:
+             cmd.extend("--qos=" + cluster.config.qos)
+ 
+         if worker:
++            if cluster.config.partition:
++                cmd.append("--partition=" + cluster.config.partition)
++            if cluster.config.constraint:
++                cmd.append("--constraint=" + cluster.config.constraint)
+             cpus = cluster.config.worker_cores
+             mem = slurm_format_memory(cluster.config.worker_memory)
+             log_file = "dask-worker-%s.log" % worker.name
+@@ -77,6 +83,10 @@
+             )
+             env = self.get_worker_env(cluster)
+         else:
++            if cluster.config.scheduler_partition:
++                cmd.append("--partition=" + cluster.config.scheduler_partition)
++            if cluster.config.scheduler_partition:
++                cmd.append("--constraint=" + cluster.config.scheduler_constraint)
+             cpus = cluster.config.scheduler_cores
+             mem = slurm_format_memory(cluster.config.scheduler_memory)
+             log_file = "dask-scheduler-%s.log" % cluster.name
+@@ -96,11 +106,11 @@
+                 "--chdir=" + staging_dir,
+                 "--output=" + os.path.join(staging_dir, log_file),
+                 "--cpus-per-task=%d" % cpus,
+-                "--mem=%s" % mem,
++#                "--mem=%s" % mem,
+                 "--export=%s" % (",".join(sorted(env))),
+             ]
+         )
+-
++        
+         return cmd, env, script
+ 
+     def get_stop_cmd_env(self, job_id):
+--- dask/lib/python3.7/site-packages/dask_jobqueue/slurm.py	2021-02-10 07:07:25.288978576 +0000
++++ dask/lib/python3.7/site-packages/dask_jobqueue/slurm.py.new	2021-02-10 07:44:34.447655881 +0000
+@@ -73,7 +73,7 @@
+         if job_mem is None:
+             memory = slurm_format_bytes_ceil(self.worker_memory)
+         if memory is not None:
+-            header_lines.append("#SBATCH --mem=%s" % memory)
++            header_lines.append("##SBATCH --mem=%s" % memory)
+ 
+         if walltime is not None:
+             header_lines.append("#SBATCH -t %s" % walltime)

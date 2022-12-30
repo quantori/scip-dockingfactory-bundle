@@ -1,0 +1,32 @@
+# This is a build environment for Quantori SCIP product for Amazon Linux 2.
+#
+# How to build:  docker build --rm --tag build/createrepo/amazon:2 --file Dockerfile.amazon2 .
+# How to build bundle: docker run -v ~/.aws:/etc/.aws:ro -e AWS_PROFILE=scip --name createrepo build/createrepo/amazon:2 /update-repo scip-quantori-staging-landing-zone-us-east-1
+ 
+FROM registry.hub.docker.com/library/amazonlinux:2
+
+LABEL maintainer="Quantori DevOps <???@quantori.com>"
+LABEL product="scip"
+LABEL vendor="Quantori"
+LABEL com.quantori.scip.build-env.version="1.0.0"
+
+
+ENV AWS_CONFIG_FILE /etc/.aws/config
+ENV AWS_SHARED_CREDENTIALS_FILE=/etc/.aws/credentials
+ENV LOCAL_REPO_PATH /var/lib/repository
+ENV TERM xterm
+
+RUN yum -y install \
+    awscli \
+    createrepo
+
+RUN printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -e' \
+  'mkdir -p ${LOCAL_REPO_PATH}' \
+  'aws s3 sync --exclude "*/repodata/*" s3://$1/RPM ${LOCAL_REPO_PATH}' \
+  'find ${LOCAL_REPO_PATH} -maxdepth 3 -mindepth 3 -exec createrepo --update {} \;' \
+  'aws s3 sync --exclude "*/Packages/*" ${LOCAL_REPO_PATH} s3://$1/RPM' \
+> /update-repo && chmod a+x /update-repo
+
+CMD ["/update-repo", "scip-quantori-staging-landing-zone-us-east-1"]

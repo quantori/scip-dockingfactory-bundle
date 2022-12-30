@@ -1,0 +1,10 @@
+# Python packages
+*.dist-info
+*.zip
+
+# PEM keys
+*.pem
+*.pem.pub
+
+# Build directories
+.build*

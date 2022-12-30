@@ -1,0 +1,69 @@
+# This is a build environment for Quantori SCIP product for Amazon Linux 2.
+#
+# How to build:  docker build --rm --tag slurm/build/amazon:2 --file Dockerfile.amazon2 ./
+# How to build bundle: docker run -it -v $(pwd):/bundle --name build-slurmrestd slurmrestd/build/amazon:2
+#
+# Arguments:
+#  - workspace is a path to build directory inside containers;
+
+FROM amazonlinux:2
+
+ARG release_pkg=https://scip-quantori-staging-landing-zone-us-east-1.s3.amazonaws.com/RPM/scip-release-1.1.0-2.noarch.rpm
+ARG slurm=20.11.8-1
+ARG workspace=/build
+
+LABEL maintainer="Quantori DevOps <???@quanori.com>"
+LABEL product="scip"
+LABEL vendor="Quantori"
+LABEL com.quantori.scip.build-env.version="1.0.0"
+
+RUN amazon-linux-extras install epel -y && \
+    yum install -y \
+        autoconf \
+        automake \
+        bzip2 \
+        curl \
+        gcc \
+        gcc-c++ \
+        gzip \
+        make \
+        perl-CPAN \
+        rpm-build \
+        tar \
+	pmix
+    # Uncomment the line below if you build binaries with original RPM spec file
+    # cpan ExtUtils::MakeMaker
+
+RUN yum install -y ${release_pkg} && \
+    yum install -y \
+        http-parser-devel \
+        json-c-devel \
+        libjwt-devel \
+        libyaml-devel \
+        munge-devel \
+        pam-devel \
+	pmix-devel \
+        python3 \
+        readline-devel
+
+ENV RPM_TOPDIR ${workspace}/rpmbuild
+ENV SLURM_FULL_VERSION ${slurm}
+ENV SHELL /bin/bash
+ENV TERM xterm
+
+WORKDIR $workspace
+
+COPY etc/systemd/system/slurmrestd.service ./
+COPY opt/slurm/etc/slurm_scip.conf ./
+COPY scip-slurmrestd.spec ./
+
+RUN mkdir -p ${RPM_TOPDIR}/{BUILD,RPMS,SOURCES,SPECS,SRPMS} && \
+    mv -t ${RPM_TOPDIR}/SOURCES slurmrestd.service slurm_scip.conf && \
+    curl -Ls -o ${RPM_TOPDIR}/SOURCES/slurm-${SLURM_FULL_VERSION/%-*/}.tar.gz  \
+         "https://github.com/SchedMD/slurm/archive/refs/tags/slurm-${SLURM_FULL_VERSION//./-}.tar.gz" && \
+    echo "Build package for SLURM ${SLURM_FULL_VERSION} ..." && \
+    rpmbuild -D "_topdir ${RPM_TOPDIR}" \
+             -D "slurm_full_version ${SLURM_FULL_VERSION}" \
+             -bb ./scip-slurmrestd.spec
+
+CMD ["/bin/bash"]

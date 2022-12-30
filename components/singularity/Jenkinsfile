@@ -1,0 +1,59 @@
+
+def buildInDocker(String name, String platform, String release, String arch){
+    script {
+        def prefix = sh(script: "echo RPM/${platform}/${release}/\$(uname -m)", returnStdout: true).trim()
+        def image = docker.build("build/${prefix}:latest".toLowerCase(), "-f components/${name}/Dockerfile.${platform}${release} ./")
+        
+        image.inside("-v ${pwd(tmp: true)}:/build -v ${pwd(tmp: true)}/rpmbuild:/root/rpmbuild/ -u 0:0" ) {
+            sh("cd components/${name} && rm -rf tmp && make")
+        }
+
+        def startChar = name[0].toLowerCase() 
+        sh("aws s3 cp --recursive --exclude '*' --include 'singularity-ce-*.rpm' ${pwd(tmp: true)}/rpmbuild/RPMS/${arch} s3://${SCIP_DEPLOYMENT_BUCKET}/${prefix}/Packages/${startChar}")
+    }
+}
+
+pipeline {
+
+    agent none
+
+    environment {
+        SCIP_COMPONENT="singularity"
+    }
+
+    stages {
+        stage("Build binaries in parallel") {
+            parallel {
+                stage('ARM64: Amazon Linux 2') {
+                    agent { label 'arm' }
+
+                    steps {
+                        buildInDocker(env.SCIP_COMPONENT, 'amazon', '2', 'aarch64')
+                        cleanWs()
+                    }
+                }
+                stage('x86_64: Amazon Linux 2') {
+                    agent { label 'x86_64&&amazon2' }
+                    steps {
+                        buildInDocker(env.SCIP_COMPONENT, 'amazon', '2', 'x86_64')
+                        cleanWs()
+                    }
+                }
+                stage('x86_64: CentOS 7') {
+                    agent { label 'x86_64' }
+                    steps {
+                        buildInDocker(env.SCIP_COMPONENT, 'centos', '7', 'x86_64')
+                        cleanWs()
+                    }
+                }
+            }
+        }
+
+    }
+
+    post {
+        success {
+             build job: 'rpm-metadata-update'
+        }
+    }
+}

@@ -1,0 +1,65 @@
+# This is a build environment for Quantori SCIP product for Amazon Linux 2.
+# 
+# How to build:  docker build --rm --tag scip/build/amazon:2 [--build-arg cmake=3.19.8] --file Dockerfile.amazon2 .
+# How to build bundle: docker run -t -v $(pwd)/scip:/shared/src -v $(pwd)/bundle:/shared/bundle --name build-bundle scip/build/amazon:2 make -f /shared/src/Makefile bundle
+
+FROM registry.hub.docker.com/library/amazonlinux:2
+
+ARG cmake=3.19.8
+ARG node=16.6
+
+LABEL maintainer="Quantori DevOps <???@quanori.com>"
+LABEL product="scip"
+LABEL vendor="Quantori"
+LABEL com.quantori.scip.build-env.version="1.0.0"
+
+# Install dependencies to build Python
+RUN amazon-linux-extras install epel -y && yum update -y && yum -y install  \
+    bzip2 \
+    bzip2-devel \
+    curl \
+    expat-devel \
+    gcc \
+    gcc-c++ \
+    git \
+    libffi-devel \
+    make \
+    openssl-devel \
+    readline-devel \
+    rpm-build \
+    sqlite-devel \
+    tar \
+    xz-devel \
+    iconv \
+    pandoc \
+    zlib-devel && \
+    rm -rf /var/cache/yum
+
+# Install CMAKE 3 to build boost openbabel and others
+RUN PKG=cmake-${cmake}-$(uname)-$(arch) VER=${cmake} && \
+    curl -L -s https://cmake.org/files/v${VER%.*}/${PKG}.tar.gz | tar xzf - -C /tmp && \
+    cp -r -t /usr/local /tmp/${PKG}/* && rm -rf /tmp/${PKG}
+
+# Install NodeJS to build JupyterHub
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+ENV NPM_CONFIG_CACHE=/tmp/.npm
+ENV NVM_DIR=/opt/nvm
+RUN mkdir -p "${NVM_DIR}" && \
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash && \
+    source "${NVM_DIR}/nvm.sh" && nvm install ${node}
+
+RUN printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  '' \
+  'source ${NVM_DIR}/nvm.sh && nvm use default' \
+  'exec "$@"' \
+> /build-entrypoint.sh && chmod a+x /build-entrypoint.sh
+
+WORKDIR /shared/bundle
+
+ENTRYPOINT ["/build-entrypoint.sh"]
+
+ENV CONTAINER=docker
+ENV TERM xterm
+
+CMD ["/bin/bash"]

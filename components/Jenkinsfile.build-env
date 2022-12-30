@@ -1,0 +1,45 @@
+def makeBuildImage(String platform, component){
+    sh(
+        """
+        make -C components ci-image/${platform} AWSCMD=aws SCIP_COMPONENT="${component}"
+        """
+    )
+}
+pipeline {
+
+    agent none
+
+    environment {
+        AWS_DEFAULT_REGION = 'us-east-1'
+        SCIP_COMPONENT = 'libjwt'
+    }
+
+    stages {
+        stage("Create build image") {
+
+            parallel {
+                // stage('ARM64: Amazon Linux 2') {
+                //     agent { label 'arm' }
+                //     steps {
+                //         pushToEcr('amazon-x86')
+                //         cleanWs()
+                //     }
+                // }
+                stage('x86_64: Amazon Linux 2') {
+                    agent { label 'x86_64' }
+                    steps {
+                        makeBuildImage('amazon2', env.SCIP_COMPONENT)
+                        cleanWs()
+                    }
+                }
+                stage('x86_64: CentOS 7') {
+                    agent { label 'x86_64' }
+                    steps {
+                        makeBuildImage('centos7', env.SCIP_COMPONENT)
+                        cleanWs()
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=JupyterHub
+After=syslog.target network.target
+RequiresMountsFor=/shared/bundle/
+
+[Service]
+User=root
+
+Environment="JUPYTERHUB_TEMPLATES_PATHS=/shared/bundle/jupyterhub/etc/jupyterhub/templates"
+Environment="JUPYTERHUB_SERVICES_PATHS=/shared/bundle/jupyterhub/etc/jupyterhub/services"
+Environment="PATH=/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/opt/jupyterhub/bin:/opt/slurm/bin"
+Environment="PYTHONPATH=/shared/bundle/jupyterhub/etc/jupyterhub/"
+ExecStart=/shared/bundle/jupyterhub/bin/jupyterhub -f /shared/bundle/jupyterhub/etc/jupyterhub/jupyterhub_config.py
+
+[Install]
+WantedBy=multi-user.target

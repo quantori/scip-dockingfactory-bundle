@@ -1,0 +1,16 @@
+[realms]
+{{ $krb5 := .Env.SCIP_AUTH_KERBEROS | strings.Split " " -}}
+
+  {{ .Env.SCIP_AUTH_DOMAIN | strings.ToUpper }} = {
+    kdc = {{ index $krb5 1 }}:88
+
+    admin_server = {{ index $krb5 0 }}
+    default_domain = {{ .Env.SCIP_AUTH_DOMAIN | strings.ToLower }}
+  }
+
+  {{ .Env.SCIP_AUTH_DOMAIN | strings.ToLower }} = {
+    kdc = {{ index $krb5 1 }}:88
+
+    admin_server = {{ index $krb5 1 }}
+    default_domain = {{ .Env.SCIP_AUTH_DOMAIN | strings.ToLower }}
+  }

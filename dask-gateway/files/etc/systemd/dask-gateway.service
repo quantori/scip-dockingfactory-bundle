@@ -1,0 +1,13 @@
+[Unit]
+Description=DaskGateway
+After=syslog.target network.target
+RequiresMountsFor=/shared/bundle/
+
+[Service]
+User=root
+Environment="PATH=/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/shared/bundle/dask/bin:/opt/slurm/bin"
+ExecStart=/shared/bundle/dask/bin/dask-gateway-server -f /shared/bundle/dask-gateway/etc/dask_gateway_config.py
+
+
+[Install]
+WantedBy=multi-user.target

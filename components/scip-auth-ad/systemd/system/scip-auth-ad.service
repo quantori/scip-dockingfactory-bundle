@@ -1,0 +1,16 @@
+[Unit]
+Description=SciP: Configure authentication/authorization using Active Directory
+After=network.service
+After=NetworkManager.service
+After=network-online.target
+Before=sssd.service
+#BindsTo=sssd.service
+
+[Service]
+Type=oneshot
+Environment=SCIP_SSSD_KEYTAB_FILE=/etc/sssd/scip.keytab
+ExecStart=/bin/bash -eo pipefail -c 'source /etc/sssd/sssd-configure; enable_scip_domain; update_hosts; make_kerberos_configs; make_sssd_keytab; make_sssd_configs; update_ssh'
+RemainAfterExit=yes
+TimeoutSec=0
+
+StandardOutput=journal+console

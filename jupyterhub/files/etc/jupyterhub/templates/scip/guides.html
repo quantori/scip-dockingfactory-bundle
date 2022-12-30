@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/png" href="image/favicon.ico"/>
+    <meta charset="UTF-8">
+    <title>JH Guide</title>
+</head>
+<body>
+<div>
+    <a role="button"
+       style="margin-right: 20%;display:inline-block;margin-bottom:0;font-weight:400;text-align:center;white-space:nowrap;vertical-align:middle;touch-action:manipulation;cursor:pointer;background-image:none;border:1px solid transparent;padding:6px 12px;font-size:14px;line-height:1.42857143;border-radius:2px;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;color:#fff;background-color:#225f8d;border-color:#1b4c70"
+       class="btn btn-md btn-primary" href="home">
+        Home
+    </a>
+</div>
+
+<div style="display: -webkit-box;
+    display: -ms-flexbox;
+    display: -webkit-flex;
+    display: flex;">
+    <div style="-webkit-box-flex: 0 0 100px;-webkit-flex: 0 0 100px;-ms-flex: 0 0 100px;flex: 0 0 100px;padding: 1em;width: 20%">
+        <h1>Contents</h1><br>
+        <ul>
+            {%- for item in contents %}
+            <li><a href="#{{item[0]}}"> {{item[1]}}</a></li>
+
+            {%- endfor %}
+        </ul>
+    </div>
+    <div style="-webkit-box-flex: 1 1 0;-webkit-flex: 1 1 0;-ms-flex: 1 1 0;flex: 1 1 0;padding-left: 2em;margin-right:20%; margin-top:1.1%">
+        <h1>Guide</h1>
+        <br>
+
+        {%- for item in guides %}
+        <h2 id="{{item['id']}}">{{item['title']}}</h2>
+        {{item['body']}}
+        <hr/>
+        {%- endfor %}
+    </div>
+</div>
+</body>
+</html>

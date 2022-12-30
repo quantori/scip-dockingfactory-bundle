@@ -1,0 +1,69 @@
+# This is a build environment for Quantori SCIP product for Amazon Linux 2.
+#
+# How to build:  docker build --rm --tag build/scip/centos:7 [--build-arg cmake=3.19.8] --file Dockerfile.centos7 .
+# How to start:  docker run -it --name scip-build-centos-7 build/scip/centos:7
+
+FROM registry.hub.docker.com/library/centos:7
+
+ARG cmake=3.19.8
+ARG node=16.6
+
+LABEL maintainer="Quantori DevOps <???@quanori.com>"
+LABEL product="scip"
+LABEL vendor="Quantori"
+LABEL com.quantori.scip.build-env.version="1.0.0"
+
+# Install dependencies to build Python
+RUN yum update -y && \
+    yum install -y epel-release centos-release-scl && \
+    yum -y install  \
+    bzip2 \
+    bzip2-devel \
+    curl \
+    devtoolset-8-gcc \
+    devtoolset-8-gcc-c++ \
+    devtoolset-8-make \
+    expat-devel \
+    git \
+    libffi-devel \
+    locales \
+    openssl-devel \
+    readline-devel \
+    rpm-build \
+    sqlite-devel \
+    tar \
+    xz-devel \
+    iconv \
+    pandoc \
+    zlib-devel && \
+    yum clean all
+
+# Install CMAKE 3
+RUN PKG=cmake-${cmake}-$(uname)-$(arch) VER=${cmake} && \
+    curl -L -s https://cmake.org/files/v${VER%.*}/${PKG}.tar.gz | tar xzf - -C /tmp && \
+    cp -r -t /usr/local /tmp/${PKG}/* && rm -rf /tmp/${PKG}
+
+# Install NodeJS to build JupyterHub
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+ENV NPM_CONFIG_CACHE=/tmp/.npm
+ENV NVM_DIR=/opt/nvm
+RUN mkdir -p "${NVM_DIR}" && \
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash && \
+    source "${NVM_DIR}/nvm.sh" && nvm install ${node}
+
+RUN printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  '' \
+  'source ${NVM_DIR}/nvm.sh && nvm use default' \
+  'source /opt/rh/devtoolset-8/enable' \
+  'exec "$@"' \
+> /build-entrypoint.sh && chmod a+x /build-entrypoint.sh
+
+WORKDIR /shared/bundle
+
+ENTRYPOINT ["/build-entrypoint.sh"]
+
+ENV CONTAINER=docker
+ENV TERM xterm
+
+CMD ["/bin/bash"]

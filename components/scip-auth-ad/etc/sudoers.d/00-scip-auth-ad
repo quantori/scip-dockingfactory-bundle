@@ -1,0 +1,2 @@
+# Enable sudo access for SciP users from Active Directory
+%hpc-sudoers ALL=(ALL) NOPASSWD:ALL

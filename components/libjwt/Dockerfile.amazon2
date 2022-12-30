@@ -1,0 +1,51 @@
+# This is a build environment for Quantori SCIP product for Amazon Linux 2.
+#
+# How to build:  docker build --rm --tag libjwt/build/amazon:2 --file Dockerfile.amazon2 .
+# How to build bundle: docker run -it -v $(pwd):/bundle --name build-libjwt libjwt/build/amazon:2
+#
+# Arguments:
+#  - workspace is a path to build directory inside containers;
+
+FROM amazonlinux:2
+
+ARG owner=0
+ARG workspace=/build
+
+LABEL maintainer="Quantori DevOps <scip-ops@quanori.com>"
+LABEL product="scip"
+LABEL vendor="Quantori"
+LABEL com.quantori.scip.build-env.version="1.0.0"
+
+ENV TERM xterm
+WORKDIR $workspace
+
+RUN yum -y install \
+    # Build tools
+    autoconf \
+    automake \
+    check-devel \
+    doxygen \
+    gcc \
+    gcc-c++ \
+    git \
+    graphviz \
+    make \
+    rpm-build \
+    # Dependencies
+    jansson-devel \
+    libtool \
+    openssl-devel && \
+    # Build process
+    git clone https://github.com/benmcollins/libjwt.git && \
+    pushd libjwt && \
+      autoreconf -i && \
+      ./configure && \
+      make all && \
+      make check && \
+      pushd dist && \
+        make rpm && \
+      popd && \
+      chown $owner rpmbuild/RPMS/*/libjwt-*.rpm && \
+    popd
+
+CMD ["/bin/bash"]

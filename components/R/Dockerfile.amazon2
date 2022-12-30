@@ -1,0 +1,40 @@
+# This is a build environment for Quantori SCIP product for Amazon Linux 2.
+#
+# How to build:  docker build --rm --tag build/r/amazon:2 --file Dockerfile.amazon2 ./
+# How to build bundle: docker run -it -v $(pwd):/build --name build-R build/r/amazon:2
+#
+# Arguments:
+#  - workspace is a path to build directory inside containers;
+
+FROM registry.hub.docker.com/library/amazonlinux:2
+
+ARG packages=rpm-build
+ARG workspace=/build
+
+LABEL maintainer="Quantori DevOps <scip-ops@quantori.com>"
+LABEL product="scip"
+LABEL vendor="Quantori"
+LABEL com.quantori.scip.build-env.version="1.0.0"
+
+ENV RPM_TOPDIR ${workspace}/rpmbuild
+ENV RPM_BUILD_DEPS ${packages}
+ENV SHELL /bin/bash
+ENV TERM xterm
+
+RUN amazon-linux-extras enable epel R4 && \
+    yum install -y curl make which && \
+    yum install -y \
+        autoconf \
+        automake \
+        bzip2-devel \
+        gcc-c++ \
+        less \
+        rpm-build \
+        xz-devel \
+        ${RPM_BUILD_DEPS//:/ } && \
+    mkdir -p ${RPM_TOPDIR}/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS} && \
+    chmod o+rwx,+t ${RPM_TOPDIR}/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+
+WORKDIR $workspace
+
+CMD ["/bin/bash"]

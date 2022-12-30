@@ -1,0 +1,6 @@
+[submodule "dockinginterface"]
+	path = dockinginterface
+	url = git@github.com:quantori/scip-dockinginterface.git
+[submodule "dockingfactory"]
+	path = dockingfactory
+	url = git@github.com:quantori/scip-dockingfactory.git

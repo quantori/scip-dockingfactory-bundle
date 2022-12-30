@@ -1,0 +1,7 @@
+[scip-quantori]
+name=Scientific platform - Quantori - $basearch
+baseurl=https://$scipbucket.s3.amazonaws.com/RPM/$scipdist/$releasever/$basearch
+enabled=1
+# TODO: Sign packages and deliver public part of GPG key
+gpgcheck=0
+#gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-SCIP

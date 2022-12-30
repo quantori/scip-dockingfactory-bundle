@@ -1,0 +1,103 @@
+
+def buildInDocker(String name, String platform, String release){
+    script {
+        def buildArgs = [
+            packages: "${RPM_BUILD_DEPS}",
+        ]
+
+        def toDockerArgs = {  it.collect { /--build-arg $it.key="$it.value"/ } join " " }
+        def prefix = sh(script: "echo RPM/${platform}/${release}/\$(uname -m)", returnStdout: true).trim()
+
+        def image = docker.build(
+            "build/${prefix}:latest".toLowerCase(),
+            toDockerArgs(buildArgs) + " -f components/${name}/Dockerfile.${platform}${release} ./"
+        )
+
+        image.inside {
+            sh("""
+               R_VERSION=${Version}
+               curl -sL -o \${RPM_TOPDIR}/SOURCES/SCIP-R-\${R_VERSION}.tar.gz  https://cran.r-project.org/src/base/R-4/R-\${R_VERSION}.tar.gz
+               cp components/R/R-3.3.0-fix-java_path-in-javareconf.patch \${RPM_TOPDIR}/SOURCES
+               rpmbuild -D "_topdir \${RPM_TOPDIR}" -D "_prefix /shared/scip/software" --nocheck -bb components/R/SCIP-R-\${R_VERSION}.spec
+               cp \${RPM_TOPDIR}/RPMS/*/*.rpm ./
+               """
+            )
+        }
+
+        def startChar = name[0].toLowerCase() 
+        sh("aws s3 mv --recursive --exclude '*' --include '*.rpm' ./ s3://${SCIP_DEPLOYMENT_BUCKET}/${prefix}/Packages/${startChar}")
+    }
+}
+
+
+pipeline {
+
+    agent none
+
+    environment {
+        SCIP_COMPONENT="R"
+        RPM_BUILD_DEPS = [
+          "cairo-devel",
+          "gcc-gfortran",
+          "java-headless",
+          "less",
+          "libcurl-devel",
+          "libicu-devel",
+          "libjpeg-devel",
+          "libtiff-devel",
+          "libtool",
+          "libXmu-devel",
+          "libXt-devel",
+          "openblas-devel",
+          "pango-devel",
+          "pcre2-devel",
+          "readline-devel",
+          "tex(latex)",
+          "texinfo-tex",
+          "tcl-devel",
+          "tk-devel",
+          "tre-devel",
+          "valgrind-devel"
+        ].join(':')
+    }
+
+    parameters {
+        choice(name: 'Version', choices: '4.1.2\n4.0.4', description: 'Version of the R language')
+    }
+
+    stages {
+        stage("Build binaries in parallel") {
+            parallel {
+                stage('ARM64: Amazon Linux 2') {
+                    agent { label 'arm' }
+
+                    steps {
+                        buildInDocker(env.SCIP_COMPONENT, 'amazon', '2')
+                        cleanWs()
+                    }
+                }
+                stage('x86_64: Amazon Linux 2') {
+                    agent { label 'x86_64' }
+                    steps {
+                        buildInDocker(env.SCIP_COMPONENT, 'amazon', '2')
+                        cleanWs()
+                    }
+                }
+                stage('x86_64: CentOS 7') {
+                    agent { label 'x86_64' }
+                    steps {
+                        buildInDocker(env.SCIP_COMPONENT, 'centos', '7')
+                        cleanWs()
+                    }
+                }
+            }
+        }
+
+    }
+
+    post {
+        success {
+             build job: 'rpm-metadata-update'
+        }
+    }
+}

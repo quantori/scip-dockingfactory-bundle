@@ -1,0 +1,66 @@
+def buildInDocker(String name, String platform, String release){
+    script {
+        def buildArgs = [
+            workspace: '/build',
+            release_pkg: "https://${SCIP_DEPLOYMENT_BUCKET}.s3.amazonaws.com/RPM/scip-release-1.0.0-4.noarch.rpm",
+            slurm: '21.08.6-1'
+        ]
+        def prefix = sh(script: "echo RPM/${platform}/${release}/\$(uname -m)", returnStdout: true).trim()
+        def toDockerArgs = {  it.collect { /--build-arg $it.key="$it.value"/ } join " " }
+
+        def image = docker.build("build/${prefix}:latest".toLowerCase(), toDockerArgs(buildArgs) + " -f components/${name}/Dockerfile.${platform}${release} components/${name}")
+
+        image.inside {
+          sh("cp ${buildArgs.workspace}/rpmbuild/RPMS/*/${name}-*.rpm ./")
+        }
+
+        def startChar = name[0].toLowerCase()
+        sh("aws s3 mv --recursive --exclude '*' --include '${name}-*.rpm' ./ s3://${SCIP_DEPLOYMENT_BUCKET}/${prefix}/Packages/${startChar}")
+    }
+}
+
+
+pipeline {
+
+    agent none
+
+    environment {
+        SCIP_COMPONENT="scip-slurmrestd"
+    }
+
+    stages {
+        stage("Build binaries in parallel") {
+            parallel {
+                stage('ARM64: Amazon Linux 2') {
+                    agent { label 'arm' }
+
+                    steps {
+                        buildInDocker(env.SCIP_COMPONENT, 'amazon', '2')
+                        cleanWs()
+                    }
+                }
+                stage('x86_64: Amazon Linux 2') {
+                    agent { label 'x86_64' }
+                    steps {
+                        buildInDocker(env.SCIP_COMPONENT, 'amazon', '2')
+                        cleanWs()
+                    }
+                }
+                stage('x86_64: CentOS 7') {
+                    agent { label 'x86_64' }
+                    steps {
+                        buildInDocker(env.SCIP_COMPONENT, 'centos', '7')
+                        cleanWs()
+                    }
+                }
+            }
+        }
+
+    }
+
+    post {
+        success {
+             build job: 'rpm-metadata-update'
+        }
+    }
+}

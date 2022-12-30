@@ -1,0 +1,39 @@
+# This is a build environment for Quantori SCIP product for Centos7
+
+# How to build:  docker build --rm --tag singularity/build/centos:7 --file components/singularity/Dockerfile.amazon2 .
+# How to build bundle: docker run -it -v "`pwd`/components/singularity:/build" -v "`pwd`/components/singularity/rpmbuild:/root/rpmbuild/" singularity/build/centos:7 bash -c "make"
+# Arguments:
+#  - workspace is a path to build directory inside containers;
+
+FROM centos:7
+
+ARG owner=0
+ARG workspace=/build
+ARG cmake=3.19.8
+
+LABEL maintainer="Quantori DevOps <scip-ops@quanori.com>"
+LABEL product="scip"
+LABEL vendor="Quantori"
+LABEL com.quantori.scip.build-env.version="1.0.0"
+
+WORKDIR $workspace
+
+RUN yum -y update && \
+    yum groupinstall "Development Tools"  -y && \
+    yum install -y \
+      build-essential \
+      libssl-dev \
+      uuid-dev \
+      libgpgme11-dev \
+      squashfs-tools \
+      wget \
+      git \
+      libseccomp-devel \
+      cryptsetup
+
+# Install CMAKE 3 to build boost openbabel and others
+RUN PKG=cmake-${cmake}-$(uname)-$(arch) VER=${cmake} && \
+    curl -L -s https://cmake.org/files/v${VER%.*}/${PKG}.tar.gz | tar xzf - -C /tmp && \
+    cp -r -t /usr/local /tmp/${PKG}/* && rm -rf /tmp/${PKG}
+
+CMD ["/bin/bash"]

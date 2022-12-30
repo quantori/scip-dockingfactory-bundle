@@ -1,0 +1,24 @@
+pipeline {
+
+    agent none
+
+    stages {
+        stage("Update RPM metadata") {
+            agent { label 'linux' }
+
+            steps {
+                script {
+                    sh("mkdir -p ${pwd(tmp: true)}/repository && rm -rf ${pwd(tmp: true)}/repository/*")
+                    docker.build(
+                        'createrepo:latest',
+                        '-f components/scip-rpm-update/Dockerfile.amazon2 ./'
+                    ).inside("-v ${pwd(tmp: true)}/repository:/var/lib/repository"){
+                        sh("/update-repo ${env.SCIP_DEPLOYMENT_BUCKET}")
+                    }
+                }
+                cleanWs()
+            }
+        }
+
+    }
+}

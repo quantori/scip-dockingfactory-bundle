@@ -1,0 +1,8 @@
+{
+ "argv": [
+  "/shared/bundle/dask/bin/python", "-m", "IPython.kernel",
+          "-f", "{connection_file}"
+ ],
+ "display_name": "dask",
+ "language": "python"
+}
