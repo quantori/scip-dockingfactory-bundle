@@ -149,7 +149,7 @@ all: dockinginterface dockingfactory
 dockingfactory: dockinginterface $(BUNDLE_PATH)/dockingfactory
 
 $(BUNDLE_PATH)/dockingfactory:
-	cd dockingfactory && . $(BUNDLE_PATH)/dask/bin/activate && python setup.py install
+	cd dockingfactory && $(BUNDLE_PATH)/dask/bin/pip3 install .
 
 .PHONY: clean-python
 clean-python: clean-boost clean-docking
