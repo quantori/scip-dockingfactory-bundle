@@ -19,6 +19,17 @@ Key advantages:
 
 Tech stack includes AWS ParallelCluster, Python, Dask, Slurm, and docking backends written in C++.
 
+## Bundle
+
+The bundle consists of this head project and the following other projects:
+
+- [DockingFactory](https://github.com/quantori/scip-dockingfactory)
+- [DockingInterface](https://github.com/quantori/scip-dockinginterface)
+- [Vina](https://github.com/quantori/scip-vina)
+- [Smina](https://github.com/quantori/scip-smina)
+- [QVina 2](https://github.com/quantori/scip-qvina)
+- [rDock](https://github.com/quantori/scip-rdock)
+
 ## Installation
 
 ### Prerequisities
