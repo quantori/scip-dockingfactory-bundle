@@ -37,13 +37,13 @@ The bundle consists of this head project and the following other projects:
 On a Debian-based system. run:
 
 ```
-sudo apt install wget curl libffi-dev libbz2-dev g++ make
+sudo apt install wget curl libffi-dev libssl-dev libbz2-dev g++ make
 ```
 
 On a Redhat-based system, run:
 
 ```
-sudo yum install wget curl libffi-devel libbz2-devel g++ make
+sudo yum install wget curl libffi-devel libssl-devel libbz2-devel g++ make
 ```
 
 
